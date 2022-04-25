@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
-#include <time.h>
 #include <signal.h>
 
 #include <sys/types.h>
@@ -15,93 +14,9 @@
 #include <sys/shm.h>
 #include <sys/mman.h>
 
+#include "../include/protocol.h"
 #include "../include/error.h"
-
-// MACROS
-#define N_TRAINS 5
-#define N_STATIONS 8
-#define N_SEGM 16
-#define N_MAPS 2
-#define N_ETCS 2
-#define DEFAULT_PROTOCOL 0
-#define N_RBC_PIPE 0
-#define SERVER_NAME "rbc_server"
-#define PIPE_NAME "reg_pipe"
-#define SHM_SIZE 512
-#define SHM_NAME "rbc_data"
-
-// TYPEDEFS
-typedef enum bool { FALSE, TRUE } bool;
-
-typedef struct cmd_args {
-    int etcs;
-    bool rbc;
-    int mappa;
-} cmd_args;
-
-typedef struct itin {
-    char *start;
-    char *end;
-    char *path;
-} itin;
-
-typedef struct segm_t {
-    char *name;
-    bool reserved;
-} segm_t;
-
-typedef struct station_t {
-    char* name;
-    int n_trains;
-} station_t;
-
-typedef struct rbc_data_t {
-    bool segms[N_SEGM];
-    int stations[N_STATIONS];
-    char *paths[N_TRAINS];
-} rbc_data_t;
-
-typedef itin map_t[N_TRAINS];
-
-// PROTOTIPI FUNZIONI MAIN
-void parse_cmd_args(const int, char* [], cmd_args*);
-bool are_args_correct(const cmd_args*);
-void registro_and_treni(const cmd_args);
-void wait_children();
-// PROTOTIPI FUNZIONI PADRE_TRENI
-void padre_treni(const int);
-void init_segm_files();
-void set_segm_status(const int, const bool, const bool);
-// PROTOTIPI FUNZIONI REGISTRO
-void registro(const cmd_args);
-int open_pipe(const char*, const int);
-void close_pipe(const char*, int, int);
-void send_map_to_trains(const map_t);
-void send_itin(int, const itin);
-void send_map_to_rbc(const map_t map);
-char* map_to_str(const map_t map);
-// PROTOTIPI FUNZIONI TRENO
-void treno(const int, const int);
-int connect_to_pipe(const char*, int);
-char* get_itin(const int);
-void update_train_log(int, char*, char*);
-bool go_to_next_pos(const int, const int, char*, char*);
-bool allowed_to_proceed(const int, const int, char*, char*, const bool);
-bool is_stazione(char*);
-bool is_segm_free(char*);
-bool allowed_by_rbc(int, char*, char*);
-int connect_to_rbc();
-// PROTOTIPI FUNZIONI RBC
-void rbc();
-void get_map(char**);
-void init_rbc_data(rbc_data_t*);
-int create_rbc_server();
-void run_server(int);
-void serve_req(int);
-bool is_segm_status_correct(rbc_data_t*, int, char*, bool);
-void update_rbc_log(const int, char*, char*, const bool);
-// SIGNALS HANDLERS
-void usr1_handl(int);
+#include "../include/curr_time.h"
 
 /*---------------------------------------------------------------------------------------------------------------------------*/
 // FUNZIONI MAIN
@@ -143,12 +58,15 @@ void parse_cmd_args(const int argc, char* argv[], cmd_args* result) {
 }
 
 // controllo correttezza valori argomenti cmd
-bool are_args_correct(const cmd_args *args) {
+BOOL are_args_correct(const cmd_args *args) {
   return args->etcs > 0 && args->etcs <= N_ETCS && args->mappa > 0 && args->mappa <= N_MAPS;
 }
 
 // crea processi REGISTRO e PADRE_TRENI
 void registro_and_treni(const cmd_args args) {
+    // eliminazione RBC log se esiste e processo RBC non contemplato in data istanza 
+    if(args.etcs == 1) unlink(RBC_LOG);
+
     // creazione processo REGISTRO
     pid_t pid;
     if((pid = fork()) == 0) registro(args);
@@ -203,13 +121,13 @@ void init_segm_files() {
 }
 
 // modifica lo stato di un segmento
-void set_segm_status(const int num_segm, const bool empty, const bool new_file) {
+void set_segm_status(const int num_segm, const BOOL empty, const BOOL new_file) {
     // definizione nome file
     char filename[16];
     sprintf(filename, "data/MA%d.txt", num_segm);
 
     // se new_file e' TRUE allora se non esiste viene creato file
-    int o_flags = new_file ? O_CREAT | O_RDWR | O_TRUNC : O_WRONLY | O_TRUNC;
+    const int o_flags = new_file ? O_CREAT | O_RDWR | O_TRUNC : O_WRONLY | O_TRUNC;
 
     // apertura file
     int fd;
@@ -323,10 +241,14 @@ void send_map_to_rbc(const map_t map) {
 }
 
 char* map_to_str(const map_t map) {
-    char buffer[512] = { 0 }, tmp_str[128], *msg_to_send;
+    const char *sep = "-";
+    char buffer[512] = { 0 };
     for(int i=0; i<N_TRAINS; i++) {
-        sprintf(tmp_str, "%s-%s-%s", map[i].start, map[i].path, map[i].end);
-        strcat(buffer, tmp_str);
+        strcat(buffer, map[i].start);
+        strcat(buffer, sep);
+        strcat(buffer, map[i].path);
+        strcat(buffer, sep);
+        strcat(buffer, map[i].end);
         if(i != (N_TRAINS - 1)) strcat(buffer, "~");
     }
 
@@ -379,11 +301,23 @@ void treno(const int num_treno, const int etcs) {
     char *itin_treno = get_itin(num_treno);
     printf("TRENO %d\t| Ricevuto itinerario %s da REGISTRO.\n", num_treno, itin_treno);
 
+    const char* no_pos = "--";
+
+    // se TRENO non dispone di itinerario allora termina
+    if(!strcmp(itin_treno, no_pos)) {
+        update_train_log(num_treno, (char*)no_pos, (char*)no_pos);
+        free(itin_treno);
+        printf("TRENO %d\t| Nessun itinerario: terminazione esecuzione.\n", num_treno);
+        exit(0);
+    }
+
+    const char path_sep = '-';
+
     // posizione corrente del treno inizializzata al punto di partenza dell'itinerario
-    char *curr_pos = strsep(&itin_treno, "-");
+    char *curr_pos = strsep(&itin_treno, &path_sep);
     char *next_pos;
 
-    while((next_pos = strsep(&itin_treno, "-"))) {
+    while((next_pos = strsep(&itin_treno, &path_sep))) {
         // TRENO aggiorna il proprio log file ad ogni iterazione
         update_train_log(num_treno, curr_pos, next_pos);
 
@@ -403,7 +337,7 @@ void treno(const int num_treno, const int etcs) {
     }
 
     // viene annotata ultima tappa TRENO nel log
-    update_train_log(num_treno, curr_pos, "--");
+    update_train_log(num_treno, curr_pos, (char*)no_pos);
 
     free(curr_pos);
     free(next_pos);
@@ -415,7 +349,7 @@ void treno(const int num_treno, const int etcs) {
 // processo invia richiesta per ricevere itinerario a REGISTRO
 char* get_itin(const int num_treno) {
     // connessione a pipe registro
-    int reg_pipe = connect_to_pipe(PIPE_NAME, num_treno);
+    const int reg_pipe = connect_to_pipe(PIPE_NAME, num_treno);
 
     char buffer[128];
 
@@ -454,19 +388,24 @@ int connect_to_pipe(const char* pipe_name, int num_treno) {
 
 // aggiornamento log TRENO
 void update_train_log(int num_treno, char *curr_pos, char *next_pos) {
+    // prima volta viene chiamata funzione il contenuto del file viene ripristinato
+    static int o_flags = O_CREAT | O_WRONLY | O_TRUNC;
+
     // stabilito nome file
     char filename[16];
-    snprintf(filename, sizeof(filename), "log/T%d.log", num_treno);
+    sprintf(filename, "log/T%d.log", num_treno);
 
     // apertura file
     int fd;
-    if((fd = open(filename, O_CREAT | O_WRONLY | O_APPEND, 0666)) == -1) throw_err("update_train_log");
+    if((fd = open(filename, o_flags, 0666)) == -1) throw_err("update_train_log");
+
+    // o_flags setup dopo la prima chiamata della funzione
+    o_flags = O_CREAT | O_WRONLY | O_APPEND;
 
     // linea di testo da scrivere su file
     char write_line[64] = { 0 };
-    time_t now = time(NULL);
-    struct tm *time_ptr = localtime(&now);
-    snprintf(write_line, sizeof(write_line), "[Attuale: %s], [Next: %s], %s", curr_pos, next_pos, asctime(time_ptr));
+    
+    sprintf(write_line, "[Attuale: %s], [Next: %s], %s", curr_pos, next_pos, get_curr_time());
 
     // num byte da scrivere su file
     const size_t line_len = strlen(write_line) * sizeof(char);
@@ -478,10 +417,10 @@ void update_train_log(int num_treno, char *curr_pos, char *next_pos) {
 }
 
 // ritorna TRUE se TRENO procede verso la posizione successiva FALSE altrimenti
-bool go_to_next_pos(const int etcs, int num_treno, char *curr_pos, char *next_pos) {
+BOOL go_to_next_pos(const int etcs, int num_treno, char *curr_pos, char *next_pos) {
     // se prossima posizione e' stazione allora TRUE altrimenti FALSE
-    const bool curr_stazione = is_stazione(curr_pos);
-    const bool next_stazione = is_stazione(next_pos);
+    const BOOL curr_stazione = is_stazione(curr_pos);
+    const BOOL next_stazione = is_stazione(next_pos);
 
     // se TRENO non ottiene il permesso di procedere allora riterta all'iterazione successiva
     if(!allowed_to_proceed(etcs, num_treno, curr_pos, next_pos, next_stazione)) return FALSE;
@@ -508,7 +447,7 @@ bool go_to_next_pos(const int etcs, int num_treno, char *curr_pos, char *next_po
 }
 
 // data una stringa stabilisce se questa e' nome di una stazione
-bool is_stazione(char *str) {
+BOOL is_stazione(char *str) {
     char id_str[8] = { 0 };
     int num_stazione;
 
@@ -524,7 +463,7 @@ bool is_stazione(char *str) {
 }
 
 // TRENO richiede permesso per poter procedere alla posizione successiva
-bool allowed_to_proceed(const int etcs, int num_treno, char *curr_pos, char *next_pos, const bool stazione) {
+BOOL allowed_to_proceed(const int etcs, int num_treno, char *curr_pos, char *next_pos, const BOOL stazione) {
     // se ETCS2 allora TRENO chiede autorizzazione a RBC
     if(etcs == 2 && !allowed_by_rbc(num_treno, curr_pos, next_pos)) return FALSE;
     // se posizione successiva e' stazione allora TRENO ha il permesso di procedere
@@ -534,10 +473,11 @@ bool allowed_to_proceed(const int etcs, int num_treno, char *curr_pos, char *nex
 }
 
 // lettura file segmento, se contiene '0' allora segmento e' libero
-bool is_segm_free(char *segm) {
+BOOL is_segm_free(char *segm) {
     // definizione nome file segmento
     char filename[16];
     sprintf(filename, "data/%s.txt", segm);
+    // printf("is_segm_free | filename: %s segm: %s\n", filename, segm);
 
     // apertura file segmento
     int fd;
@@ -556,17 +496,18 @@ bool is_segm_free(char *segm) {
             break;
         default:
             // valore non valido
-            throw_err("allowed_to_proceed");
+            throw_err("allowed_to_proceed | invalid file content");
     }
 
     return file_content == '0';
 }
 
 // TRENO chiede permesso ad RBC di procedere
-bool allowed_by_rbc(int num_train, char *curr_pos, char *next_pos) {
+BOOL allowed_by_rbc(int num_train, char *curr_pos, char *next_pos) {
     // connessione ad RBC
     const int client_fd = connect_to_rbc(num_train);
 
+    // messaggio da inviare a RBC
     const int msg_len =
         sizeof(num_train) + ((strlen(curr_pos) + 1) * sizeof(char)) +
         ((strlen(next_pos) + 1) * sizeof(char)) + (2 * sizeof(char));
@@ -578,7 +519,7 @@ bool allowed_by_rbc(int num_train, char *curr_pos, char *next_pos) {
     printf("TRENO %d\t| Inviato messaggio %s identificativo ad RBC.\n", num_train, msg_to_send);
 
     // lettura verdetto da parte di RBC
-    bool auth;
+    BOOL auth;
     if((read(client_fd, &auth, sizeof(auth))) == -1) throw_err("allowed_by_rbc");
     printf("TRENO %d\t| Ricevuta autorizzazione %d da RBC.\n", num_train, auth);
 
@@ -635,6 +576,14 @@ void rbc() {
     rbc_data_t *rbc_data = (rbc_data_t*)mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     init_rbc_data(rbc_data);
 
+    // segnale interrompe RBC se tutti processi TRENO hanno concluso esecuzione
+    signal(SIGUSR1, usr1_handl);
+    // viene inviato un SIGUSR1 ogni path vuoto
+    check_if_empty_paths(rbc_data->paths);
+
+    // elimina RBC log se esiste
+    unlink(RBC_LOG);
+
     // creazione server
     const int server_fd = create_rbc_server();
     printf("RBC\t| Server creato (fd=%d).\n", server_fd);
@@ -658,7 +607,6 @@ void init_rbc_data(rbc_data_t *rbc_data) {
 
     // inizializzazione array segmento
     for(int i=0; i<N_SEGM; i++) rbc_data->segms[i] = FALSE;
-
     // inizializzazione array paths
     get_map(rbc_data->paths);
 
@@ -666,10 +614,13 @@ void init_rbc_data(rbc_data_t *rbc_data) {
     for(int i=0; i<N_STATIONS; i++) rbc_data->stations[i] = 0;
     // conta numero di treni presenti nelle stazioni di inizio
     for(int i=0; i<N_TRAINS; i++) {
-        str_ptr = rbc_data->paths[i];
+        str_ptr = strdup(rbc_data->paths[i]);
         station_name = strsep(&str_ptr, "-");
-        sscanf(station_name, "S%d", &num_station);
-        rbc_data->stations[num_station - 1]++;
+
+        if(is_stazione(station_name)) {
+            sscanf(station_name, "S%d", &num_station);
+            rbc_data->stations[num_station - 1]++;
+        }
     }
 
     free(station_name);
@@ -696,6 +647,13 @@ void get_map(char *dest[N_TRAINS]) {
 
     free(map);
     free(path);
+}
+
+// viene inviato un segnale SIGUSR1 per ogni path vuoto
+void check_if_empty_paths(char *paths[N_TRAINS]) {
+    for(int i=0; i<N_TRAINS; i++) {
+        if(!strcmp(paths[i], "--")) kill(getpid(), SIGUSR1);
+    }
 }
 
 // creazione server RBC
@@ -731,9 +689,6 @@ void run_server(int server_fd) {
 
     int client_fd;
     pid_t pid;
-    
-    // segnale interrompe RBC se tutti processi TRENO hanno concluso esecuzione
-    signal(SIGUSR1, usr1_handl);
 
     while(1) {
         // RBC in attessa di richieste da processi TRENO
@@ -764,21 +719,21 @@ void serve_req(int client_fd) {
     
     char *msg_read = strdup(buffer);
 
-    const char *str_sep = "~";
+    const char str_sep = '~';
 
     // id TRENO
     int num_train;
-    char *tmp_str = strsep(&msg_read, str_sep);
+    char *tmp_str = strsep(&msg_read, &str_sep);
     sscanf(tmp_str, "%d", &num_train);
 
     // posizione corrente TRENO
-    char *curr_pos = strsep(&msg_read, str_sep);
+    char *curr_pos = strsep(&msg_read, &str_sep);
     // posizione successiva TRENO
-    char *next_pos = strsep(&msg_read, str_sep);
+    char *next_pos = strsep(&msg_read, &str_sep);
 
     // stabilito se posizioni sono stazioni o segmenti
-    const bool curr_stazione = is_stazione(curr_pos);
-    const bool next_stazione = is_stazione(next_pos);
+    const BOOL curr_stazione = is_stazione(curr_pos);
+    const BOOL next_stazione = is_stazione(next_pos);
 
     // id posizioni
     int curr_id, next_id;
@@ -788,11 +743,11 @@ void serve_req(int client_fd) {
     else sscanf(next_pos, "MA%d", &next_id);
 
     // RBC stabilisce se TRENO può progredire o meno
-    const bool next_st_or_rbc_data_next_free = (next_stazione || !rbc_data->segms[next_id - 1]);
-    const bool next_st_or_next_segm_corr = is_segm_status_correct(rbc_data, next_id, next_pos, next_stazione);
-    const bool curr_st_or_curr_segm_corr = is_segm_status_correct(rbc_data, curr_id, curr_pos, curr_stazione);
+    const BOOL next_st_or_rbc_data_next_free = (next_stazione || !rbc_data->segms[next_id - 1]);
+    const BOOL next_st_or_next_segm_corr = is_segm_status_correct(rbc_data, next_id, next_pos, next_stazione);
+    const BOOL curr_st_or_curr_segm_corr = is_segm_status_correct(rbc_data, curr_id, curr_pos, curr_stazione);
 
-    const bool auth = next_st_or_rbc_data_next_free && next_st_or_next_segm_corr && curr_st_or_curr_segm_corr;
+    const BOOL auth = next_st_or_rbc_data_next_free && next_st_or_next_segm_corr && curr_st_or_curr_segm_corr;
 
     // printf("%d&%d&%d=%d\n", next_st_or_rbc_data_next_free, next_st_or_next_segm_corr, curr_st_or_curr_segm_corr, auth);
 
@@ -834,36 +789,34 @@ void serve_req(int client_fd) {
 }
 
 // se valore in file segmento non corrisponde a quello in strutt dati RBC allora FALSE, TRUE altrimenti
-bool is_segm_status_correct(rbc_data_t *rbc_data, int segm_id, char *segm_name, bool stazione) {
+BOOL is_segm_status_correct(rbc_data_t *rbc_data, int segm_id, char *segm_name, BOOL stazione) {
     // se posizione non e' segmento allora TRUE
     if(stazione) return TRUE;
 
-    const bool segm_file_val = !is_segm_free(segm_name);
-    const bool rbc_segm_val = rbc_data->segms[segm_id - 1];
+    const BOOL segm_file_val = !is_segm_free(segm_name);
+    const BOOL rbc_segm_val = rbc_data->segms[segm_id - 1];
     // printf("RBC\t| segm_id=%d segm_file_val=%d rbc_segm_val=%d\n", segm_id, segm_file_val, rbc_segm_val);
 
     return segm_file_val == rbc_segm_val;
 }
 
 // aggiornamento log RBC
-void update_rbc_log(const int num_train, char *curr_pos, char* next_pos, const bool auth) {
+void update_rbc_log(const int num_train, char *curr_pos, char* next_pos, const BOOL auth) {
     // apertura file
     int fd;
-    if((fd = open("log/RBC.log", O_CREAT | O_WRONLY | O_APPEND, 0666)) == -1) throw_err("update_train_log");
+    if((fd = open(RBC_LOG, O_CREAT | O_WRONLY | O_APPEND, 0666)) == -1) throw_err("update_train_log");
 
     // linea di testo da scrivere su file
     char write_line[128] = { 0 };
-    // tempo corrente
-    const time_t now = time(NULL);
-    const struct tm *time_ptr = localtime(&now);
+    
     // se autorizzato SI altrimenti NO
     char auth_str[3];
     if(auth) strcpy(auth_str, "SI");
     else strcpy(auth_str, "NO");
 
-    snprintf(write_line, sizeof(write_line),
+    sprintf(write_line,
             "[TRENO RICHIEDE AUTORIZZAZIONE: T%d], [Attuale: %s], [Next: %s], [AUTORIZZATO: %s], %s",
-            num_train, curr_pos, next_pos, auth_str, asctime(time_ptr));
+            num_train, curr_pos, next_pos, auth_str, get_curr_time());
 
     // num byte da scrivere su file
     const size_t line_len = strlen(write_line) * sizeof(char);
@@ -893,6 +846,10 @@ void usr1_handl(int sign) {
     // eliminazione SHM
     shm_unlink(SHM_NAME);
     printf("RBC\t| Eliminata SHM %s.\n", SHM_NAME);
+
+    // eliminazione server
+    unlink(SERVER_NAME);
+    printf("RBC\t| Chiuso server %s.\n", SERVER_NAME);
 
     printf("RBC\t| Terminazione esecuzione.\n");
     exit(0);
