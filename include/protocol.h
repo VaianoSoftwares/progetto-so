@@ -48,7 +48,7 @@ void wait_children();
 // PROTOTIPI FUNZIONI PADRE_TRENI
 void padre_treni(const int);
 void init_segm_files();
-void set_segm_status(const int, const BOOL, const BOOL);
+void create_segm_file(int);
 // PROTOTIPI FUNZIONI REGISTRO
 void registro(const cmd_args);
 int open_pipe(const char*, const int);
@@ -66,6 +66,7 @@ BOOL go_to_next_pos(const int, const int, char*, char*);
 BOOL allowed_to_proceed(const int, const int, char*, char*, const BOOL);
 BOOL is_stazione(char*);
 BOOL is_segm_free(char*);
+void set_segm_status(const int, const BOOL);
 BOOL allowed_by_rbc(int, char*, char*);
 int connect_to_rbc();
 // PROTOTIPI FUNZIONI RBC

@@ -117,27 +117,22 @@ void padre_treni(const int etcs) {
 
 // crea N_SEGM file, ognuno associato ad un segmento
 void init_segm_files() {
-    for(int i=1; i<=N_SEGM; i++) set_segm_status(i, TRUE, TRUE);
+    for(int i=1; i<=N_SEGM; i++) create_segm_file(i);
 }
 
 // modifica lo stato di un segmento
-void set_segm_status(const int num_segm, const BOOL empty, const BOOL new_file) {
+void create_segm_file(const int num_segm) {
     // definizione nome file
     char filename[16];
     sprintf(filename, "data/MA%d.txt", num_segm);
 
-    // se new_file e' TRUE allora se non esiste viene creato file
-    const int o_flags = new_file ? O_CREAT | O_RDWR | O_TRUNC : O_WRONLY | O_TRUNC;
-
     // apertura file
     int fd;
-    if((fd = open(filename, o_flags, 0666)) == -1) throw_err("set_segm_status");
-
-    // 0 se segmento libero 1 altrimenti
-    const char file_content = empty ? '0' : '1';
+    if((fd = open(filename, O_CREAT | O_RDWR | O_TRUNC, 0666)) == -1) throw_err("create_segm_file");
 
     // sovrascrittura file
-    if(write(fd, &file_content, sizeof(char)) == -1) throw_err("set_segm_status");
+    if(write(fd, "0", sizeof(char)) == -1) throw_err("create_segm_file");
+    if(write(fd, "", sizeof(char)) == -1) throw_err("create_segm_file");
 
     close(fd);
 }
@@ -432,7 +427,7 @@ BOOL go_to_next_pos(const int etcs, int num_treno, char *curr_pos, char *next_po
         // ottieni numero segmento della posizione successiva
         sscanf(next_pos, "MA%d", &num_segm);
         // treno occupa il segmento successivo
-        set_segm_status(num_segm, FALSE, FALSE);
+        set_segm_status(num_segm, FALSE);
     }
 
     // se stazione allora TRENO non deve aggiornare stato segmento
@@ -440,10 +435,37 @@ BOOL go_to_next_pos(const int etcs, int num_treno, char *curr_pos, char *next_po
         // ottieni numero segmento posizione corrente
         sscanf(curr_pos, "MA%d", &num_segm);
         // treno libera il segmento corrente
-        set_segm_status(num_segm, TRUE, FALSE);   
+        set_segm_status(num_segm, TRUE);   
     }
 
     return TRUE;
+}
+
+// modifica lo stato di un segmento
+void set_segm_status(const int num_segm, const BOOL empty) {
+    // definizione nome file
+    char filename[16];
+    sprintf(filename, "data/MA%d.txt", num_segm);
+
+    // apertura file
+    int fd;
+    if((fd = open(filename, O_RDWR, 0666)) == -1) throw_err("set_segm_status | open");
+
+    // informazioni file
+    struct stat fs;
+    if((fstat(fd, &fs)) == -1) throw_err("set_segm_status | fstat");
+
+    // mappatura file in memoria
+    char *mapped_file = (char *)mmap(NULL, fs.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if(mapped_file == MAP_FAILED) throw_err("set_segm_status | mmap");
+
+    // 0 se segmento libero 1 altrimenti
+    const char file_content = empty ? '0' : '1';
+    memcpy(mapped_file, &file_content, sizeof(char));
+
+    // chiusura file
+    if((munmap(mapped_file, fs.st_size) == -1)) throw_err("set_segm_status | munmap");
+    close(fd);
 }
 
 // data una stringa stabilisce se questa e' nome di una stazione
@@ -481,13 +503,22 @@ BOOL is_segm_free(char *segm) {
 
     // apertura file segmento
     int fd;
-    if((fd = open(filename, O_RDONLY, 0444)) == -1) throw_err("allowed_to_proceed");
+    if((fd = open(filename, O_RDONLY, 0444)) == -1) throw_err("is_segm_free | open");
+
+    // informazioni file
+    struct stat fs;
+    if((fstat(fd, &fs)) == -1) throw_err("is_segm_free | fstat");
+
+    // mappatura file
+    char *mapped_file = (char *)mmap(NULL, fs.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if(mapped_file == MAP_FAILED) throw_err("is_segm_free | MAP_FAILED");
 
     // lettura file, se letto 0 allora TRENO puo' procedere
     // se letto 1 deve ritentare alla prossima iterazione
-    char file_content;
-    if((read(fd, &file_content, sizeof(file_content))) == -1) throw_err("allowed_to_proceed");
+    const char file_content = *mapped_file;
 
+    // chiusura file
+    if((munmap(mapped_file, fs.st_size) == -1)) throw_err("is_segm_free | munmap");
     close(fd);
 
     switch(file_content) {
@@ -496,7 +527,7 @@ BOOL is_segm_free(char *segm) {
             break;
         default:
             // valore non valido
-            throw_err("allowed_to_proceed | invalid file content");
+            throw_err("is_segm_free | invalid file content");
     }
 
     return file_content == '0';
@@ -574,6 +605,7 @@ void rbc() {
 
     // inizializzazione array segmenti e stazioni
     rbc_data_t *rbc_data = (rbc_data_t*)mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if(rbc_data == MAP_FAILED) throw_err("rbc | mmap");
     init_rbc_data(rbc_data);
 
     // segnale interrompe RBC se tutti processi TRENO hanno concluso esecuzione
@@ -590,14 +622,6 @@ void rbc() {
 
     // server RBC attende ed esaurisce richieste processi TRENO
     run_server(server_fd);
-
-    // eliminazione shm
-    // munmap(rbc_data, SHM_SIZE);
-    // close(shm_fd);
-    // shm_unlink(SHM_NAME);
-    // printf("RBC\t| Eliminata SHM %s (fd=%d).\n", SHM_NAME, shm_fd);
-
-    // printf("RBC\t| Terminazione esecuzione.\n");
 }
 
 // inizializzazione array segmenti e stazioni
@@ -711,6 +735,7 @@ void serve_req(int client_fd) {
 
     // rbc_data, SHM tra RBC e suoi processi figli
     rbc_data_t *rbc_data = (rbc_data_t*)mmap(0, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if(rbc_data == MAP_FAILED) throw_err("serve_req | mmap");
 
     // RBC riceve informazioni di TRENO
     char buffer[32] = { 0 };
@@ -778,7 +803,7 @@ void serve_req(int client_fd) {
     update_rbc_log(num_train, curr_pos, next_pos, auth);
 
     // accesso a shm rimosso
-    munmap(rbc_data, SHM_SIZE);
+    if((munmap(rbc_data, SHM_SIZE)) == -1) throw_err("serve_req | munmap");
     close(shm_fd);
     printf("RBC\t| Accesso a SHM %s (fd=%d) rimosso.\n", SHM_NAME, shm_fd);
 
