@@ -12,7 +12,7 @@ do
     case "$flags" in
         e) etcs=${OPTARG};;
         m) mappa=${OPTARG};;
-        c) make -f .make;;
+        c) make;;
         h)
             echo "Usage: $(basename $0) [-e arg] [-m arg] [-c]"
             exit 0
