@@ -12,8 +12,8 @@
 #include "../include/wait_children.h"
 
 // PROTOTIPI FUNZIONI REGISTRO
-int open_pipe(const char*, const int);
-void close_pipe(const char*, int, int);
+int open_pipe(char *const, const int);
+void close_pipe(char *const, const int, const int);
 void send_map_to_trains(const map_t);
 void send_itin(int, const itin);
 void send_map_to_rbc(const map_t map);
@@ -139,7 +139,7 @@ char* map_to_str(const map_t map) {
 }
 
 // creazione e apertura pipe registro
-int open_pipe(const char* pipe_name, int num_pipe) {
+int open_pipe(char *const pipe_name, const int num_pipe) {
     // nome pipe
     char filename[16];
     sprintf(filename, "%s%d", pipe_name, num_pipe);
@@ -148,8 +148,9 @@ int open_pipe(const char* pipe_name, int num_pipe) {
     unlink(filename);
 
     // creazione e definizione impostazioni pipe
-    mknod(filename, S_IFIFO, 0);
-    chmod(filename, 0666);
+    // mknod(filename, S_IFIFO, 0);
+    // chmod(filename, 0666);
+    mkfifo(filename, 0666);
     printf("REGISTRO\t| Creato %s.\n", filename);
 
     // apertura pipe
@@ -160,7 +161,7 @@ int open_pipe(const char* pipe_name, int num_pipe) {
 }
 
 // chiusura fd e eliminazione pipe registro
-void close_pipe(const char* pipe_name, int fd_pipe, int num_pipe) {
+void close_pipe(char *const pipe_name, const int fd_pipe, const int num_pipe) {
     // chiusura pipe
     close(fd_pipe);
 

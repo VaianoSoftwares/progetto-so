@@ -10,8 +10,8 @@
 #define N_ETCS 2
 #define DEFAULT_PROTOCOL 0
 #define N_RBC_PIPE 0
-#define SERVER_NAME "data/rbc_server"
-#define PIPE_NAME "data/reg_pipe"
+#define SERVER_NAME "/tmp/rbc_server"
+#define PIPE_NAME "/tmp/reg_pipe"
 #define SHM_SIZE 512
 #define SHM_NAME "rbc_data"
 #define RBC_LOG "log/RBC.log"

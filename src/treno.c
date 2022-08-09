@@ -27,6 +27,10 @@ void set_segm_status(const int, const BOOL);
 BOOL allowed_by_rbc(int, char*, char*);
 int connect_to_rbc(int);
 
+// COSTANTI GLOBALI
+const char *no_pos = "--";
+const char path_sep = '-';
+
 /*---------------------------------------------------------------------------------------------------------------------------*/
 // FUNZIONI TRENO
 
@@ -42,8 +46,6 @@ int main(int argc, char *argv[]) {
     char *itin_treno = get_itin(num_treno);
     printf("TRENO %d\t| Ricevuto itinerario %s da REGISTRO.\n", num_treno, itin_treno);
 
-    const char* no_pos = "--";
-
     // se TRENO non dispone di itinerario allora termina
     if(!strcmp(itin_treno, no_pos)) {
         update_train_log(num_treno, (char*)no_pos, (char*)no_pos);
@@ -51,8 +53,6 @@ int main(int argc, char *argv[]) {
         printf("TRENO %d\t| Nessun itinerario: terminazione esecuzione.\n", num_treno);
         exit(0);
     }
-
-    const char path_sep = '-';
 
     // posizione corrente del treno inizializzata al punto di partenza dell'itinerario
     char *curr_pos = strsep(&itin_treno, &path_sep);

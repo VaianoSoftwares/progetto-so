@@ -39,7 +39,7 @@ void usr1_handl(int);
 int main(void) {
     printf("RBC\t| Inizio esecuzione.\n");
 
-    // creazione shm
+    // creazione shared memory
     const int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
     printf("RBC\t| Creata SHM %s (fd=%d).\n", SHM_NAME, shm_fd);
     ftruncate(shm_fd, SHM_SIZE);
@@ -311,7 +311,7 @@ void usr1_handl(int sign) {
 
     wait_children();
 
-    // eliminazione SHM
+    // eliminazione shared memory
     shm_unlink(SHM_NAME);
     printf("RBC\t| Eliminata SHM %s.\n", SHM_NAME);
 
