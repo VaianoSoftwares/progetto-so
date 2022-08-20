@@ -1,10 +1,10 @@
 #include "../include/segm_free.h"
 
 // lettura file segmento, se contiene '0' allora segmento e' libero
-BOOL is_segm_free(char *segm) {
+bool is_segm_free(char *segm) {
     // definizione nome file segmento
     char filename[16];
-    sprintf(filename, "data/%s.txt", segm);
+    sprintf(filename, "/tmp/%s.txt", segm);
     // printf("is_segm_free | filename: %s segm: %s\n", filename, segm);
 
     // apertura file segmento

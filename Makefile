@@ -11,7 +11,7 @@ OBJ_DIR = obj
 
 # flag compilatore
 INCL_FLAG = $(addprefix -I,$(INCL_DIR))
-CFLAGS = $(INCL_FLAG) -MMD -MP
+CFLAGS = $(INCL_FLAG) -MMD -MP -g
 
 # path file sorgente
 SRCS := $(shell find $(SRC_DIR) -name '*.c')
@@ -82,7 +82,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 # usage: make clean
 # eliminazione file: oggetto, eseguibili, dipendenze, log e segmento
 clean:
-	rm -rf bin obj data log
+	rm -rf bin obj log /tmp/MA*.txt /tmp/rbc_server /tmp/reg_pipe*
 
 
 -include $(DEPS)

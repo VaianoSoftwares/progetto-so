@@ -4,4 +4,4 @@
 #include "../include/protocol.h"
 #include "../include/error.h"
 
-BOOL is_stazione(char *str);
+bool is_stazione(char *str);

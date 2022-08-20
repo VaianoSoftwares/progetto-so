@@ -27,8 +27,9 @@ void check_if_empty_paths(char**);
 int create_rbc_server();
 void run_server(int);
 void serve_req(int);
-BOOL is_segm_status_correct(rbc_data_t*, int, char*, BOOL);
-void update_rbc_log(const int, char*, char*, const BOOL);
+bool is_segm_status_correct(rbc_data_t*, int, char*, bool);
+void update_rbc_log(const int, char*, char*, const bool);
+void print_rbc_data(rbc_data_t);
 // SIGNALS HANDLERS
 void usr1_handl(int);
 
@@ -41,6 +42,7 @@ int main(void) {
 
     // creazione shared memory
     const int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    if(shm_fd == -1) throw_err("rbc | shm_open");
     printf("RBC\t| Creata SHM %s (fd=%d).\n", SHM_NAME, shm_fd);
     ftruncate(shm_fd, SHM_SIZE);
 
@@ -73,7 +75,7 @@ void init_rbc_data(rbc_data_t *rbc_data) {
     char *str_ptr, *station_name;
 
     // inizializzazione array segmento
-    for(int i=0; i<N_SEGM; i++) rbc_data->segms[i] = FALSE;
+    for(int i=0; i<N_SEGM; i++) rbc_data->segms[i] = false;
     // inizializzazione array paths
     get_map(rbc_data->paths);
 
@@ -97,10 +99,10 @@ void init_rbc_data(rbc_data_t *rbc_data) {
 void get_map(char *dest[N_TRAINS]) {
     char buffer[512] = { 0 };
     // Connessione a registro pipe
-    const int reg_pipe = connect_to_pipe(PIPE_NAME, N_RBC_PIPE);
+    const int reg_pipe = connect_to_pipe(PIPE_FORMAT, N_RBC_PIPE);
 
     // RBC riceve mappa da REGISTRO
-    if((read(reg_pipe, buffer, sizeof(buffer))) == -1) throw_err("get_map");
+    if((read(reg_pipe, buffer, sizeof(buffer))) == -1) throw_err("get_map | read");
     printf("RBC\t| Ricevuta mappa %s da REGISTRO.\n", buffer);
 
     // Chiusura registro pipe
@@ -131,7 +133,7 @@ int create_rbc_server() {
 
     // creazione socket
     int server_fd;
-    if((server_fd = socket(AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL)) == -1) throw_err("create_rbc_server");
+    if((server_fd = socket(AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL)) == -1) throw_err("create_rbc_server | socket");
 
     // opzioni socket
     server_addr.sun_family = AF_UNIX;     
@@ -140,10 +142,10 @@ int create_rbc_server() {
     unlink(SERVER_NAME);
 
     // associazione socket ad indirizzo locale server
-    if((bind(server_fd, server_addr_ptr, server_len)) == -1) throw_err("create_rbc_server");
+    if((bind(server_fd, server_addr_ptr, server_len)) == -1) throw_err("create_rbc_server | bind");
 
     // server abilitato a concedere richieste
-    if((listen(server_fd, N_TRAINS)) == -1) throw_err("create_rbc_server");
+    if((listen(server_fd, N_TRAINS)) == -1) throw_err("create_rbc_server | listen");
 
     return server_fd;
 }
@@ -157,16 +159,20 @@ void run_server(int server_fd) {
     int client_fd;
     pid_t pid;
 
-    while(1) {
+    while(true) {
         // RBC in attessa di richieste da processi TRENO
         printf("RBC\t| Server in ascolto. In attesa di richieste TRENO.\n");
-        if((client_fd = accept(server_fd, client_addr_ptr, &client_len)) == -1) throw_err("run_server");
+        if((client_fd = accept(server_fd, client_addr_ptr, &client_len)) == -1)
+            throw_err("run_server | accept");
 
         // richiesta accolta, TRENO viene servito da un processo figlio di RBC
         printf("RBC\t| Richiesta TRENO accolta (client_fd=%d).\n", client_fd);
-        if((pid = fork()) == 0) serve_req(client_fd);
-        else if(pid == -1) throw_err("run_server");
-        else close(client_fd);
+        if((pid = fork()) == 0) {
+            close(server_fd);
+            serve_req(client_fd);
+        }
+        else if(pid == -1) throw_err("run_server | fork");
+        close(client_fd);
     }
 }
 
@@ -174,6 +180,7 @@ void run_server(int server_fd) {
 void serve_req(int client_fd) {
     // creazione SHM
     const int shm_fd = shm_open(SHM_NAME, O_RDWR, 0666);
+    if(shm_fd == -1) throw_err("serve_req | shm_open");
     printf("RBC\t| Creata SHM %s (fd=%d).\n", SHM_NAME, shm_fd);
 
     // rbc_data, SHM tra RBC e suoi processi figli
@@ -182,7 +189,7 @@ void serve_req(int client_fd) {
 
     // RBC riceve informazioni di TRENO
     char buffer[32] = { 0 };
-    if((read(client_fd, buffer, sizeof(buffer))) == -1) throw_err("serve_req");
+    if(recv(client_fd, buffer, sizeof(buffer), 0) == -1) throw_err("serve_req | recv");
     printf("RBC\t| Ricevuto messaggio %s da TRENO.\n", buffer);
     
     char *msg_read = strdup(buffer);
@@ -200,8 +207,8 @@ void serve_req(int client_fd) {
     char *next_pos = strsep(&msg_read, &str_sep);
 
     // stabilito se posizioni sono stazioni o segmenti
-    const BOOL curr_stazione = is_stazione(curr_pos);
-    const BOOL next_stazione = is_stazione(next_pos);
+    const bool curr_stazione = is_stazione(curr_pos);
+    const bool next_stazione = is_stazione(next_pos);
 
     // id posizioni
     int curr_id, next_id;
@@ -211,16 +218,16 @@ void serve_req(int client_fd) {
     else sscanf(next_pos, "MA%d", &next_id);
 
     // RBC stabilisce se TRENO può progredire o meno
-    const BOOL next_st_or_rbc_data_next_free = (next_stazione || !rbc_data->segms[next_id - 1]);
-    const BOOL next_st_or_next_segm_corr = is_segm_status_correct(rbc_data, next_id, next_pos, next_stazione);
-    const BOOL curr_st_or_curr_segm_corr = is_segm_status_correct(rbc_data, curr_id, curr_pos, curr_stazione);
+    const bool next_st_or_rbc_data_next_free = (next_stazione || !rbc_data->segms[next_id - 1]);
+    const bool next_st_or_next_segm_corr = is_segm_status_correct(rbc_data, next_id, next_pos, next_stazione);
+    const bool curr_st_or_curr_segm_corr = is_segm_status_correct(rbc_data, curr_id, curr_pos, curr_stazione);
 
-    const BOOL auth = next_st_or_rbc_data_next_free && next_st_or_next_segm_corr && curr_st_or_curr_segm_corr;
+    const bool auth = next_st_or_rbc_data_next_free && next_st_or_next_segm_corr && curr_st_or_curr_segm_corr;
 
     // printf("%d&%d&%d=%d\n", next_st_or_rbc_data_next_free, next_st_or_next_segm_corr, curr_st_or_curr_segm_corr, auth);
 
     // RBC invia autorizzazione a TRENO
-    if((write(client_fd, &auth, sizeof(auth))) == -1) throw_err("serve_req");
+    if(send(client_fd, &auth, sizeof(auth), 0) == -1) throw_err("serve_req | send");
     printf("RBC\t| Inviata autorizzazione %d a TRENO %d.\n", auth, num_train);
 
     // TRENO e' stato servito  
@@ -233,11 +240,12 @@ void serve_req(int client_fd) {
 
             // TRENO ha raggiunto destinazione, allora TRENO prossimo alla sua terminazione
             kill(getppid(), SIGUSR1);
+            print_rbc_data(*rbc_data);
         }
-        else rbc_data->segms[next_id - 1] = TRUE;
+        else rbc_data->segms[next_id - 1] = true;
 
         if(curr_stazione) rbc_data->stations[curr_id - 1]--;
-        else rbc_data->segms[curr_id - 1] = FALSE;
+        else rbc_data->segms[curr_id - 1] = false;
 
         // printf("RBC\t| valori aggiornati: curr_id=%d curr_val=%d next_id=%d next_val=%d\n", curr_id, rbc_data->segms[curr_id - 1], next_id, rbc_data->segms[next_id - 1]);
     }
@@ -253,26 +261,26 @@ void serve_req(int client_fd) {
     free(tmp_str);
     free(msg_read);
 
-    exit(0); 
+    exit(EXIT_SUCCESS); 
 }
 
-// se valore in file segmento non corrisponde a quello in strutt dati RBC allora FALSE, TRUE altrimenti
-BOOL is_segm_status_correct(rbc_data_t *rbc_data, int segm_id, char *segm_name, BOOL stazione) {
-    // se posizione non e' segmento allora TRUE
-    if(stazione) return TRUE;
+// se valore in file segmento non corrisponde a quello in strutt dati RBC allora false, true altrimenti
+bool is_segm_status_correct(rbc_data_t *rbc_data, int segm_id, char *segm_name, bool stazione) {
+    // se posizione non e' segmento allora true
+    if(stazione) return true;
 
-    const BOOL segm_file_val = !is_segm_free(segm_name);
-    const BOOL rbc_segm_val = rbc_data->segms[segm_id - 1];
+    const bool segm_file_val = !is_segm_free(segm_name);
+    const bool rbc_segm_val = rbc_data->segms[segm_id - 1];
     // printf("RBC\t| segm_id=%d segm_file_val=%d rbc_segm_val=%d\n", segm_id, segm_file_val, rbc_segm_val);
 
     return segm_file_val == rbc_segm_val;
 }
 
 // aggiornamento log RBC
-void update_rbc_log(const int num_train, char *curr_pos, char* next_pos, const BOOL auth) {
+void update_rbc_log(const int num_train, char *curr_pos, char* next_pos, const bool auth) {
     // apertura file
     int fd;
-    if((fd = open(RBC_LOG, O_CREAT | O_WRONLY | O_APPEND, 0666)) == -1) throw_err("update_train_log");
+    if((fd = open(RBC_LOG, O_CREAT | O_WRONLY | O_APPEND, 0666)) == -1) throw_err("update_train_log | open");
 
     // linea di testo da scrivere su file
     char write_line[128] = { 0 };
@@ -290,9 +298,24 @@ void update_rbc_log(const int num_train, char *curr_pos, char* next_pos, const B
     const size_t line_len = strlen(write_line) * sizeof(char);
 
     // scrittura file
-    if((write(fd, write_line, line_len)) == -1) throw_err("update_train_log");
+    if((write(fd, write_line, line_len)) == -1) throw_err("update_train_log | write");
 
     close(fd);
+}
+
+void print_rbc_data(rbc_data_t data) {
+    char rbc_str[64] = "segm: ";
+    char tmp_str[8];
+    for(int i=0; i<N_SEGM; i++) {
+        sprintf(tmp_str, "%d", data.segms[i]);
+        strcat(rbc_str, tmp_str);
+    }
+    strcat(rbc_str, " | stat: ");
+    for(int i=0; i<N_STATIONS; i++) {
+        sprintf(tmp_str, "%d", data.stations[i]);
+        strcat(rbc_str, tmp_str);
+    }
+    printf("%s\n", rbc_str);
 }
 
 /*---------------------------------------------------------------------------------------------------------------------------*/
@@ -320,5 +343,5 @@ void usr1_handl(int sign) {
     printf("RBC\t| Chiuso server %s.\n", SERVER_NAME);
 
     printf("RBC\t| Terminazione esecuzione.\n");
-    exit(0);
+    exit(EXIT_SUCCESS);
 }

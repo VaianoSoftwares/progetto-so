@@ -13,13 +13,12 @@
 const char *padre_tr_exec = "./bin/padre_treni";
 const char *reg_exec = "./bin/registro";
 const char *rbc_exec = "./bin/rbc";
+
 const char *log_dir = "log";
-const char *data_dir ="data";
 
 // PROTOTIPI FUNZIONI MAIN
 void parse_cmd_args(const int, char* [], cmd_args*);
-BOOL are_args_correct(const cmd_args*);
-void mkdir_if_not_exists(const char *);
+bool are_args_correct(const cmd_args*);
 void registro_and_treni(const cmd_args);
 
 /*---------------------------------------------------------------------------------------------------------------------------*/
@@ -32,16 +31,18 @@ int main(int argc, char *argv[]) {
     parse_cmd_args(argc, argv, &args);
     printf("MAIN\t| ETCS%d MAPPA%d RBC=%d\n", args.etcs, args.mappa, args.rbc);
 
-    // creazione directory log e data
-    mkdir_if_not_exists(log_dir);
-    mkdir_if_not_exists(data_dir);
+    // creazione directory log
+    mkdir(log_dir, 0777);
 
     // se ETCS2 e RBC allora esecuzione processo RBC
-    if(args.etcs == 2 && args.rbc) execl(rbc_exec, rbc_exec, NULL);
+    if(args.etcs == 2 && args.rbc) {
+        execl(rbc_exec, rbc_exec, NULL);
+        throw_err("main | execl");
+    }
     // esecuzione processi PADRE_TRENI e REGISTRO altrimenti
     else registro_and_treni(args);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 // argomenti passati da cmd vengono interpretati
@@ -54,7 +55,7 @@ void parse_cmd_args(const int argc, char* argv[], cmd_args *dest) {
         // parse argomento MAPPA
         else if(strlen(argv[i]) > 5 && !strncmp("MAPPA", argv[i], 5)) sscanf(argv[i], "MAPPA%d", &dest->mappa);
         // parse argomento RBC
-        else if(!strcmp("RBC", argv[i])) dest->rbc = TRUE;
+        else if(!strcmp("RBC", argv[i])) dest->rbc = true;
         // argomento non valido
         else throw_err("parse_cmd_args | invalid argument");
     }
@@ -64,22 +65,8 @@ void parse_cmd_args(const int argc, char* argv[], cmd_args *dest) {
 }
 
 // controllo correttezza valori argomenti cmd
-BOOL are_args_correct(const cmd_args *args) {
+bool are_args_correct(const cmd_args *args) {
   return args->etcs > 0 && args->etcs <= N_ETCS && args->mappa > 0 && args->mappa <= N_MAPS;
-}
-
-// crea directory path se non esiste
-void mkdir_if_not_exists(const char *path) {
-    struct stat st;
-
-    if(stat(path, (struct stat*)&stat) == -1) {
-        if(errno == ENOENT) mkdir(path, 0777);
-        else throw_err("mkdir_if_not_exists | stat");
-    }
-    else if(!S_ISDIR(st.st_mode)) {
-        unlink(path);
-        mkdir(path, 0777);
-    }
 }
 
 // crea processi REGISTRO e PADRE_TRENI
@@ -95,17 +82,17 @@ void registro_and_treni(const cmd_args args) {
     pid_t pid;
     if((pid = fork()) == 0) {
         execl(reg_exec, reg_exec, etcs_str, mappa_str, NULL);
-        exit(0);
+        throw_err("registro_and_treni | execl");
     }
-    else if(pid == -1) throw_err("main");
+    else if(pid == -1) throw_err("registro_and_treni | fork");
     printf("MAIN\t| Creato processo REGISTRO\n");
 
     // creazione processo PADRE_TRENI
     if((pid = fork()) == 0) {
         execl(padre_tr_exec, padre_tr_exec, etcs_str, NULL);
-        exit(0);
+        throw_err("registro_and_treni | execl");
     }
-    else if(pid == -1) throw_err("main");
+    else if(pid == -1) throw_err("registro_and_treni | fork");
     printf("MAIN\t| Creato processo PADRE_TRENI\n");
 
     // processo principale in attesa di terminazione di REGISTRO e PADRE_TRENI

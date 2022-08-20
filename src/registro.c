@@ -12,8 +12,8 @@
 #include "../include/wait_children.h"
 
 // PROTOTIPI FUNZIONI REGISTRO
-int open_pipe(char *const, const int);
-void close_pipe(char *const, const int, const int);
+int open_pipe(const char*, const int);
+void close_pipe(const char*, const int, const int);
 void send_map_to_trains(const map_t);
 void send_itin(int, const itin);
 void send_map_to_rbc(const map_t map);
@@ -53,18 +53,18 @@ int main(int argc, char *argv[]) {
     pid_t pid;
     if(etcs == 2) {
         if((pid = fork()) == 0) send_map_to_rbc(maps[n_map - 1]);
-        else if(pid == -1) throw_err("registro");
+        else if(pid == -1) throw_err("registro | fork");
     }
 
     // REGISTRO invia itinerari a processi TRENO
     if((pid = fork()) == 0) send_map_to_trains(maps[n_map - 1]);
-    else if(pid == -1) throw_err("registro");
+    else if(pid == -1) throw_err("registro | fork");
 
     // REGISTRO in attesa di aver inviato itinerari a processi TRENO e mappa a RBC
     wait_children();
     printf("REGISTRO\t| Terminazione esecuzione.\n");
 
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 // REGISTRO invia itinerari a processi TRENO
@@ -74,12 +74,12 @@ void send_map_to_trains(const map_t map) {
     // ogni processo invia l'itinerario ad un dato TRENO
     for(int i=1; i<=N_TRAINS; i++) {
         if((pid = fork()) == 0) send_itin(i, map[i - 1]);
-        else if(pid == -1) throw_err("send_itins");
+        else if(pid == -1) throw_err("send_map_to_trains | fork");
     }
 
     wait_children();
 
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 // attende la richiesta di un processo TRENO ed invia l'itinerario del suddetto 
@@ -91,16 +91,16 @@ void send_itin(int num_train, const itin itin) {
     const int msg_len = (strlen(buffer) + 1) * sizeof(char);
 
     // creazione e apertura pipe registro
-    const int reg_pipe = open_pipe(PIPE_NAME, num_train);
+    const int reg_pipe = open_pipe(PIPE_FORMAT, num_train);
 
     // REGISTRO invia itinerario a TRENO
-    if(write(reg_pipe, buffer, msg_len) == -1) throw_err("send_itin_to_train");
+    if(write(reg_pipe, buffer, msg_len) == -1) throw_err("send_itin | write");
     printf("REGISTRO\t| Inviato itinerario %s di TRENO %d.\n", buffer, num_train);
 
     // chiusura fd e eliminazione di pipe registro
-    close_pipe(PIPE_NAME, reg_pipe, num_train);
+    close_pipe(PIPE_FORMAT, reg_pipe, num_train);
 
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 void send_map_to_rbc(const map_t map) {
@@ -109,18 +109,18 @@ void send_map_to_rbc(const map_t map) {
     const int msg_len = (strlen(msg_to_send) + 1) * sizeof(char); 
 
     // creazione e apertura pipe registro
-    const int reg_pipe = open_pipe(PIPE_NAME, N_RBC_PIPE);
+    const int reg_pipe = open_pipe(PIPE_FORMAT, N_RBC_PIPE);
 
     // REGISTRO invia mappa a RBC
-    if(write(reg_pipe, msg_to_send, msg_len) == -1) throw_err("send_itin_to_train");
+    if(write(reg_pipe, msg_to_send, msg_len) == -1) throw_err("send_map_to_rbc | write");
     printf("REGISTRO\t| Inviata mappa %s ad RBC.\n", msg_to_send);
 
     // chiusura fd e eliminazione di pipe registro
-    close_pipe(PIPE_NAME, reg_pipe, N_RBC_PIPE);
+    close_pipe(PIPE_FORMAT, reg_pipe, N_RBC_PIPE);
 
     free(msg_to_send);
 
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 char* map_to_str(const map_t map) {
@@ -139,10 +139,10 @@ char* map_to_str(const map_t map) {
 }
 
 // creazione e apertura pipe registro
-int open_pipe(char *const pipe_name, const int num_pipe) {
+int open_pipe(const char *pipe_format, const int num_pipe) {
     // nome pipe
     char filename[16];
-    sprintf(filename, "%s%d", pipe_name, num_pipe);
+    sprintf(filename, pipe_format, num_pipe);
 
     //eliminazione pipe
     unlink(filename);
@@ -155,19 +155,19 @@ int open_pipe(char *const pipe_name, const int num_pipe) {
 
     // apertura pipe
     int fd;
-    if((fd = open(filename, O_WRONLY)) == -1) throw_err("open_reg_pipe");
+    if((fd = open(filename, O_WRONLY)) == -1) throw_err("open_pipe | open");
     printf("REGISTRO\t| Aperto %s (fd=%d).\n", filename, fd);
     return fd;
 }
 
 // chiusura fd e eliminazione pipe registro
-void close_pipe(char *const pipe_name, const int fd_pipe, const int num_pipe) {
+void close_pipe(const char *pipe_format, const int fd_pipe, const int num_pipe) {
     // chiusura pipe
     close(fd_pipe);
 
     // nome pipe
     char filename[16];
-    sprintf(filename, "%s%d", pipe_name, num_pipe);
+    sprintf(filename, pipe_format, num_pipe);
 
     // eliminazione pipe
     unlink(filename);

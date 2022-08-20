@@ -1,9 +1,9 @@
 #include "../include/connect_pipe.h"
 
 // connessione a pipe registro
-int connect_to_pipe(const char* pipe_name, int num_treno) {
+int connect_to_pipe(const char* pipe_format, int num_treno) {
     char filename[16];
-    sprintf(filename, "%s%d", pipe_name, num_treno);
+    sprintf(filename, pipe_format, num_treno);
 
     if(num_treno == N_RBC_PIPE) printf("RBC\t| Tentivo di connessione a %s.\n", filename);
     else printf("TRENO %d\t| Tentivo di connessione a %s.\n", num_treno, filename);

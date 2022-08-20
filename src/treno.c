@@ -21,10 +21,10 @@
 int connect_to_pipe(const char*, int);
 char* get_itin(const int);
 void update_train_log(int, char*, char*);
-BOOL go_to_next_pos(const int, const int, char*, char*);
-BOOL allowed_to_proceed(const int, const int, char*, char*, const BOOL);
-void set_segm_status(const int, const BOOL);
-BOOL allowed_by_rbc(int, char*, char*);
+bool go_to_next_pos(const int, const int, char*, char*);
+bool allowed_to_proceed(const int, const int, char*, char*, const bool);
+void set_segm_status(const int, const bool);
+bool allowed_by_rbc(int, char*, char*);
 int connect_to_rbc(int);
 
 // COSTANTI GLOBALI
@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
         update_train_log(num_treno, (char*)no_pos, (char*)no_pos);
         free(itin_treno);
         printf("TRENO %d\t| Nessun itinerario: terminazione esecuzione.\n", num_treno);
-        exit(0);
+        exit(EXIT_SUCCESS);
     }
 
     // posizione corrente del treno inizializzata al punto di partenza dell'itinerario
@@ -84,18 +84,18 @@ int main(int argc, char *argv[]) {
     free(next_pos);
 
     printf("TRENO %d\t| Terminazione esecuzione.\n", num_treno);
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 // processo invia richiesta per ricevere itinerario a REGISTRO
 char* get_itin(const int num_treno) {
     // connessione a pipe registro
-    const int reg_pipe = connect_to_pipe(PIPE_NAME, num_treno);
+    const int reg_pipe = connect_to_pipe(PIPE_FORMAT, num_treno);
 
     char buffer[128];
 
     // TRENO riceve itinerario da REGISTRO
-    if((read(reg_pipe, buffer, sizeof(buffer))) == -1) throw_err("get_itin");
+    if((read(reg_pipe, buffer, sizeof(buffer))) == -1) throw_err("get_itin | read");
 
     // disconnessione da pipe registro
     close(reg_pipe);
@@ -114,7 +114,7 @@ void update_train_log(int num_treno, char *curr_pos, char *next_pos) {
 
     // apertura file
     int fd;
-    if((fd = open(filename, o_flags, 0666)) == -1) throw_err("update_train_log");
+    if((fd = open(filename, o_flags, 0666)) == -1) throw_err("update_train_log | open");
 
     // o_flags setup dopo la prima chiamata della funzione
     o_flags = O_CREAT | O_WRONLY | O_APPEND;
@@ -128,19 +128,19 @@ void update_train_log(int num_treno, char *curr_pos, char *next_pos) {
     const size_t line_len = strlen(write_line) * sizeof(char);
 
     // scrittura file
-    if((write(fd, write_line, line_len)) == -1) throw_err("update_train_log");
+    if((write(fd, write_line, line_len)) == -1) throw_err("update_train_log | write");
 
     close(fd);
 }
 
-// ritorna TRUE se TRENO procede verso la posizione successiva FALSE altrimenti
-BOOL go_to_next_pos(const int etcs, int num_treno, char *curr_pos, char *next_pos) {
-    // se prossima posizione e' stazione allora TRUE altrimenti FALSE
-    const BOOL curr_stazione = is_stazione(curr_pos);
-    const BOOL next_stazione = is_stazione(next_pos);
+// ritorna true se TRENO procede verso la posizione successiva false altrimenti
+bool go_to_next_pos(const int etcs, int num_treno, char *curr_pos, char *next_pos) {
+    // se prossima posizione e' stazione allora true altrimenti false
+    const bool curr_stazione = is_stazione(curr_pos);
+    const bool next_stazione = is_stazione(next_pos);
 
     // se TRENO non ottiene il permesso di procedere allora riterta all'iterazione successiva
-    if(!allowed_to_proceed(etcs, num_treno, curr_pos, next_pos, next_stazione)) return FALSE;
+    if(!allowed_to_proceed(etcs, num_treno, curr_pos, next_pos, next_stazione)) return false;
     
     int num_segm;
 
@@ -149,7 +149,7 @@ BOOL go_to_next_pos(const int etcs, int num_treno, char *curr_pos, char *next_po
         // ottieni numero segmento della posizione successiva
         sscanf(next_pos, "MA%d", &num_segm);
         // treno occupa il segmento successivo
-        set_segm_status(num_segm, FALSE);
+        set_segm_status(num_segm, false);
     }
 
     // se stazione allora TRENO non deve aggiornare stato segmento
@@ -157,17 +157,17 @@ BOOL go_to_next_pos(const int etcs, int num_treno, char *curr_pos, char *next_po
         // ottieni numero segmento posizione corrente
         sscanf(curr_pos, "MA%d", &num_segm);
         // treno libera il segmento corrente
-        set_segm_status(num_segm, TRUE);   
+        set_segm_status(num_segm, true);   
     }
 
-    return TRUE;
+    return true;
 }
 
 // modifica lo stato di un segmento
-void set_segm_status(const int num_segm, const BOOL empty) {
+void set_segm_status(const int num_segm, const bool empty) {
     // definizione nome file
-    char filename[16];
-    sprintf(filename, "data/MA%d.txt", num_segm);
+    char filename[32];
+    sprintf(filename, SEGM_FORMAT, num_segm);
 
     // apertura file
     int fd;
@@ -191,34 +191,34 @@ void set_segm_status(const int num_segm, const BOOL empty) {
 }
 
 // TRENO richiede permesso per poter procedere alla posizione successiva
-BOOL allowed_to_proceed(const int etcs, int num_treno, char *curr_pos, char *next_pos, const BOOL stazione) {
+bool allowed_to_proceed(const int etcs, int num_treno, char *curr_pos, char *next_pos, const bool stazione) {
     // se ETCS2 allora TRENO chiede autorizzazione a RBC
-    if(etcs == 2 && !allowed_by_rbc(num_treno, curr_pos, next_pos)) return FALSE;
+    if(etcs == 2 && !allowed_by_rbc(num_treno, curr_pos, next_pos)) return false;
     // se posizione successiva e' stazione allora TRENO ha il permesso di procedere
-    if(stazione) return TRUE;
+    if(stazione) return true;
     // se posizione successiva e' un segmento allora TRENO controlla lo stato di quest'ultimo
     return is_segm_free(next_pos);
 }
 
 // TRENO chiede permesso ad RBC di procedere
-BOOL allowed_by_rbc(int num_train, char *curr_pos, char *next_pos) {
+bool allowed_by_rbc(int num_train, char *curr_pos, char *next_pos) {
     // connessione ad RBC
     const int client_fd = connect_to_rbc(num_train);
 
     // messaggio da inviare a RBC
     const int msg_len =
-        sizeof(num_train) + ((strlen(curr_pos) + 1) * sizeof(char)) +
-        ((strlen(next_pos) + 1) * sizeof(char)) + (2 * sizeof(char));
+        sizeof(num_train) + (strlen(curr_pos) * sizeof(char)) +
+        (strlen(next_pos) * sizeof(char)) + (3 * sizeof(char));
     char *msg_to_send = (char *)malloc(msg_len);
     snprintf(msg_to_send, msg_len, "%d~%s~%s", num_train, curr_pos, next_pos);
 
     // TRENO invia numero identificativo, posizione corrente e successiva
-    if((write(client_fd, msg_to_send, msg_len)) == -1) throw_err("allowed_by_rbc");
+    if(send(client_fd, msg_to_send, msg_len, 0) == -1) throw_err("allowed_by_rbc | send");
     printf("TRENO %d\t| Inviato messaggio %s identificativo ad RBC.\n", num_train, msg_to_send);
 
     // lettura verdetto da parte di RBC
-    BOOL auth;
-    if((read(client_fd, &auth, sizeof(auth))) == -1) throw_err("allowed_by_rbc");
+    bool auth;
+    if(recv(client_fd, &auth, sizeof(auth), 0) == -1) throw_err("allowed_by_rbc | recv");
     printf("TRENO %d\t| Ricevuta autorizzazione %d da RBC.\n", num_train, auth);
 
     close(client_fd);
@@ -237,7 +237,8 @@ int connect_to_rbc(int num_treno) {
 
     // creazione socket
     int client_fd;
-    if((client_fd = socket(AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL)) == -1) throw_err("connect_to_rbc");
+    if((client_fd = socket(AF_UNIX, SOCK_STREAM, DEFAULT_PROTOCOL)) == -1)
+        throw_err("connect_to_rbc | socket");
 
     // opzioni socket
     server_addr.sun_family = AF_UNIX;

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 
 #include "../include/protocol.h"
 #include "../include/error.h"
@@ -11,6 +12,7 @@ const char* treno_exec = "./bin/treno";
 // PROTOTIPI FUNZIONI PADRE_TRENI
 void init_segm_files();
 void create_segm_file(int);
+void delete_segm_files();
 
 /*---------------------------------------------------------------------------------------------------------------------------*/
 // FUNZIONI PADRE_TRENI
@@ -32,9 +34,9 @@ int main(int argc, char *argv[]) {
         if((pid = fork()) == 0) {
             sprintf(tr_id_str, "%d", i);
             execl(treno_exec, treno_exec, tr_id_str, argv[1], NULL);
-            exit(0);
+            throw_err("padre_treni | execl");
         }
-        else if(pid == -1) throw_err("main");
+        else if(pid == -1) throw_err("padre_treni | fork");
         printf("PADRE_TRENI\t| Creato processo TRENO %d\n", i);
     }
 
@@ -42,7 +44,10 @@ int main(int argc, char *argv[]) {
     wait_children();
     printf("PADRE_TRENI\t| Processi TRENO terminati.\n");
 
-    exit(0);
+    // eliminazione file segmento
+    delete_segm_files();
+
+    exit(EXIT_SUCCESS);
 }
 
 // crea N_SEGM file, ognuno associato ad un segmento
@@ -53,16 +58,25 @@ void init_segm_files() {
 // modifica lo stato di un segmento
 void create_segm_file(const int num_segm) {
     // definizione nome file
-    char filename[16];
-    sprintf(filename, "data/MA%d.txt", num_segm);
+    char filename[32];
+    sprintf(filename, SEGM_FORMAT, num_segm);
 
     // apertura file
     int fd;
-    if((fd = open(filename, O_CREAT | O_RDWR | O_TRUNC, 0666)) == -1) throw_err("create_segm_file");
+    if((fd = open(filename, O_CREAT | O_RDWR | O_TRUNC, 0666)) == -1) throw_err("create_segm_file | open");
 
     // sovrascrittura file
-    if(write(fd, "0", sizeof(char)) == -1) throw_err("create_segm_file");
-    if(write(fd, "", sizeof(char)) == -1) throw_err("create_segm_file");
+    if(write(fd, "0", sizeof(char)) == -1) throw_err("create_segm_file | write");
+    if(write(fd, "", sizeof(char)) == -1) throw_err("create_segm_file | write");
 
     close(fd);
+}
+
+// eliminazione file segmento
+void delete_segm_files() {
+    char filename[32];
+    for(int i=1; i<=N_SEGM; i++) {
+        sprintf(filename, SEGM_FORMAT, i);
+        unlink(filename);
+    }
 }

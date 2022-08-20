@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../include/bool.h"
+#include <stdbool.h>
 
 // MACROS
 #define N_TRAINS 5
@@ -11,7 +11,8 @@
 #define DEFAULT_PROTOCOL 0
 #define N_RBC_PIPE 0
 #define SERVER_NAME "/tmp/rbc_server"
-#define PIPE_NAME "/tmp/reg_pipe"
+#define PIPE_FORMAT "/tmp/reg_pipe%d"
+#define SEGM_FORMAT "/tmp/MA%d.txt"
 #define SHM_SIZE 512
 #define SHM_NAME "rbc_data"
 #define RBC_LOG "log/RBC.log"
@@ -20,13 +21,13 @@
 // TYPEDEFS
 typedef struct cmd_args {
     int etcs;
-    BOOL rbc;
+    bool rbc;
     int mappa;
 } cmd_args;
 
 typedef struct segm_t {
     char *name;
-    BOOL reserved;
+    bool reserved;
 } segm_t;
 
 typedef struct itin {
@@ -36,7 +37,7 @@ typedef struct itin {
 } itin;
 
 typedef struct rbc_data_t {
-    BOOL segms[N_SEGM];
+    bool segms[N_SEGM];
     int stations[N_STATIONS];
     char *paths[N_TRAINS];
 } rbc_data_t;
