@@ -3,7 +3,7 @@
 # -e numero ETCS (1, 2)
 # -m numero MAPPA (1, 2)
 # -c esecuzione Makefile
-# -d debug mode (ETCS2 non disponibile)
+# -d debug mode (ETCS2 non disponibile in debug mode)
 
 etcs=1          # default   ETCS1
 mappa=1         # default   MAPPA1

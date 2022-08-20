@@ -45,6 +45,8 @@ const map_t maps[N_MAPS] = {
 int main(int argc, char *argv[]) {
     printf("REGISTRO\t| Inizio esecuzione.\n");
 
+    if(argc != 3) throw_err("registro | invalid arguments");
+
     int etcs, n_map;
     sscanf(argv[1], "%d", &etcs);
     sscanf(argv[2], "%d", &n_map);
@@ -64,7 +66,7 @@ int main(int argc, char *argv[]) {
     wait_children();
     printf("REGISTRO\t| Terminazione esecuzione.\n");
 
-    exit(EXIT_SUCCESS);
+    return EXIT_SUCCESS;
 }
 
 // REGISTRO invia itinerari a processi TRENO

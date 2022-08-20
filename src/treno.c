@@ -36,6 +36,8 @@ const char path_sep = '-';
 
 // TRENO
 int main(int argc, char *argv[]) {
+    if(argc != 3) throw_err("treno | invalid arguments");
+    
     int num_treno, etcs;
     sscanf(argv[1], "%d", &num_treno);
     sscanf(argv[2], "%d", &etcs);
@@ -84,7 +86,7 @@ int main(int argc, char *argv[]) {
     free(next_pos);
 
     printf("TRENO %d\t| Terminazione esecuzione.\n", num_treno);
-    exit(EXIT_SUCCESS);
+    return EXIT_SUCCESS;
 }
 
 // processo invia richiesta per ricevere itinerario a REGISTRO

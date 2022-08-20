@@ -44,7 +44,11 @@ RBC_OBJS := $(_RBC_OBJS:%=$(OBJ_DIR)/%.o)
 
 # usage: make
 # creazione tutti file eseguibili
-all: $(BIN_DIR)/$(MAIN_BIN) $(BIN_DIR)/$(PTRENI_BIN) $(BIN_DIR)/$(REG_BIN) $(BIN_DIR)/$(TRENO_BIN) $(BIN_DIR)/$(RBC_BIN)
+all: $(BIN_DIR)/$(MAIN_BIN) \
+$(BIN_DIR)/$(PTRENI_BIN) \
+$(BIN_DIR)/$(REG_BIN) \
+$(BIN_DIR)/$(TRENO_BIN) \
+$(BIN_DIR)/$(RBC_BIN)
 
 
 # creazione eseguibile progetto-so

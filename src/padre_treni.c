@@ -21,6 +21,8 @@ void delete_segm_files();
 int main(int argc, char *argv[]) {
     printf("PADRE_TRENI\t| Inizio esecuzione.\n");
 
+    if(argc != 2) throw_err("padre_treni | invalid arguments");
+
     // crea N_SEGM file, ognuno associato ad un segmento
     init_segm_files();
     printf("PADRE_TRENI\t| Inizializzati file segmento\n");
@@ -47,7 +49,7 @@ int main(int argc, char *argv[]) {
     // eliminazione file segmento
     delete_segm_files();
 
-    exit(EXIT_SUCCESS);
+    return EXIT_SUCCESS;
 }
 
 // crea N_SEGM file, ognuno associato ad un segmento

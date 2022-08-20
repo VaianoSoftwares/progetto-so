@@ -29,7 +29,7 @@ void run_server(int);
 void serve_req(int);
 bool is_segm_status_correct(rbc_data_t*, int, char*, bool);
 void update_rbc_log(const int, char*, char*, const bool);
-void print_rbc_data(rbc_data_t);
+//void print_rbc_data(rbc_data_t);
 // SIGNALS HANDLERS
 void usr1_handl(int);
 
@@ -66,7 +66,7 @@ int main(void) {
     // server RBC attende ed esaurisce richieste processi TRENO
     run_server(server_fd);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
 
 // inizializzazione array segmenti e stazioni
@@ -240,7 +240,7 @@ void serve_req(int client_fd) {
 
             // TRENO ha raggiunto destinazione, allora TRENO prossimo alla sua terminazione
             kill(getppid(), SIGUSR1);
-            print_rbc_data(*rbc_data);
+            //print_rbc_data(*rbc_data);
         }
         else rbc_data->segms[next_id - 1] = true;
 
@@ -303,20 +303,20 @@ void update_rbc_log(const int num_train, char *curr_pos, char* next_pos, const b
     close(fd);
 }
 
-void print_rbc_data(rbc_data_t data) {
-    char rbc_str[64] = "segm: ";
-    char tmp_str[8];
-    for(int i=0; i<N_SEGM; i++) {
-        sprintf(tmp_str, "%d", data.segms[i]);
-        strcat(rbc_str, tmp_str);
-    }
-    strcat(rbc_str, " | stat: ");
-    for(int i=0; i<N_STATIONS; i++) {
-        sprintf(tmp_str, "%d", data.stations[i]);
-        strcat(rbc_str, tmp_str);
-    }
-    printf("%s\n", rbc_str);
-}
+// void print_rbc_data(rbc_data_t data) {
+//     char rbc_str[64] = "segm: ";
+//     char tmp_str[8];
+//     for(int i=0; i<N_SEGM; i++) {
+//         sprintf(tmp_str, "%d", data.segms[i]);
+//         strcat(rbc_str, tmp_str);
+//     }
+//     strcat(rbc_str, " | stat: ");
+//     for(int i=0; i<N_STATIONS; i++) {
+//         sprintf(tmp_str, "%d", data.stations[i]);
+//         strcat(rbc_str, tmp_str);
+//     }
+//     printf("%s\n", rbc_str);
+// }
 
 /*---------------------------------------------------------------------------------------------------------------------------*/
 // SIGNAL HANDLERS
