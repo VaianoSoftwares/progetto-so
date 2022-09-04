@@ -13,6 +13,9 @@ OBJ_DIR = obj
 INCL_FLAG = $(addprefix -I,$(INCL_DIR))
 CFLAGS = $(INCL_FLAG) -MMD -MP -g
 
+# flag linker
+LINK_FLAG = -lrt
+
 # path file sorgente
 SRCS := $(shell find $(SRC_DIR) -name '*.c')
 # path file oggetto
@@ -54,27 +57,27 @@ $(BIN_DIR)/$(RBC_BIN)
 # creazione eseguibile progetto-so
 $(BIN_DIR)/$(MAIN_BIN): $(MAIN_OBJS)
 	mkdir -p $(dir $@)
-	$(CC) $(MAIN_OBJS) -o $@
+	$(CC) $(MAIN_OBJS) -o $@ $(LINK_FLAG)
 
 # creazione eseguibile padre_treni
 $(BIN_DIR)/$(PTRENI_BIN): $(PTRENI_OBJS)
 	mkdir -p $(dir $@)
-	$(CC) $(PTRENI_OBJS) -o $@
+	$(CC) $(PTRENI_OBJS) -o $@ $(LINK_FLAG)
 
 # creazione eseguibile registro
 $(BIN_DIR)/$(REG_BIN): $(REG_OBJS)
 	mkdir -p $(dir $@)
-	$(CC) $(REG_OBJS) -o $@
+	$(CC) $(REG_OBJS) -o $@ $(LINK_FLAG)
 
 # creazione eseguibile treno
 $(BIN_DIR)/$(TRENO_BIN): $(TRENO_OBJS)
 	mkdir -p $(dir $@)
-	$(CC) $(TRENO_OBJS) -o $@
+	$(CC) $(TRENO_OBJS) -o $@ $(LINK_FLAG)
 
 # creazione eseguibile rbc
 $(BIN_DIR)/$(RBC_BIN): $(RBC_OBJS)
 	mkdir -p $(dir $@)
-	$(CC) $(RBC_OBJS) -o $@
+	$(CC) $(RBC_OBJS) -o $@ $(LINK_FLAG)
 
 
 # compilazione file sorgente
